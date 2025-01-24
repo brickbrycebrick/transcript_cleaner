@@ -28,7 +28,8 @@ class PromptTemplates:
         2. Use context clues to infer correct words if there are obvious transcription errors
         3. Maintain the original meaning and speaker's intent
         4. Only make changes if you are confident they improve accuracy
-        5. Return ONLY the corrected sentence, with no explanation
+        5. Replace words that do not match the context of the transcript
+        6. Return ONLY the corrected sentence, with no explanation
 
         # Use the context below to infer the purpose of the sentence:
         {context}
@@ -36,6 +37,25 @@ class PromptTemplates:
         # Target sentence to clean: {target}
 
         If the sentence appears correct, return it unchanged.
+        """
+        
+        return {
+            "system_prompt": system_prompt,
+            "prompt": prompt
+        }
+    
+    @staticmethod
+    def get_segmentation_prompt(self, text_segment: str) -> Dict[str, str]:
+        """Prompt for identifying natural sentence boundaries."""
+        system_prompt = """You are an expert at understanding natural speech patterns and sentence structure.
+        Your task is to identify where complete thoughts or sentences end in a transcript."""
+        
+        prompt = f"""
+        Given this segment of text, identify the next complete thought or sentence.
+        Return ONLY the complete thought/sentence, nothing else.
+        
+        Text segment:
+        {text_segment}
         """
         
         return {
@@ -52,6 +72,8 @@ class TranscriptCleaner:
     def _create_chunks(self, transcript: str) -> List[Dict]:
         """Create overlapping chunks from the transcript."""
         sentences = sent_tokenize(transcript)
+        print(f"Number of sentences: {len(sentences)}")
+        print(f"First sentence: {sentences[0]}")
         chunks = []
         
         # Handle case where transcript is too short for window size
@@ -92,6 +114,8 @@ class TranscriptCleaner:
             )
             
             cleaned_text = response.choices[0].message.content.strip()
+            print(f"========== Original text ========== \n{chunk['target']}\n")
+            print(f"========== Cleaned text ========== \n{cleaned_text}\n")
             return {
                 'position': chunk['position'],
                 'cleaned_text': cleaned_text

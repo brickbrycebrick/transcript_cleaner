@@ -113,8 +113,8 @@ async def main():
         print(f"\n--- Video {i} ---")
         if result["success"]:
             print("Video ID:", result["video_id"])
-            print("\nTranscript excerpt (first 300 chars):", result["transcript"][:300], "...")
-            print("\nCleaned Transcript excerpt:", result["cleaned_transcript"][:300], "...")
+            # print("\nTranscript excerpt (first 300 chars):", result["transcript"][:300], "...")
+            # print("\nCleaned Transcript excerpt:", result["cleaned_transcript"][:300], "...")
         else:
             print("Error:", result["error"])
 
