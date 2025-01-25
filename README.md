@@ -41,7 +41,6 @@ Analysis for video CSE77wAdDLg:
 - Total tokens used: 41,579
 
 Notes:
-- Whisper transcripts are used as a base line for comparison.
 - The sample size is small.
 - I need to see how big I can make the chunks before quality drops off to reduce API calls.
 
