@@ -1,6 +1,6 @@
 # YouTube Transcript Analysis
 
-A Python tool that improves YouTube's auto-generated transcripts using DeepSeek LLM and compares these with high-quality Whisper transcriptions to analyzes their quality using semantic similarity with sentence-BERT model. The project's goal is to create high-quality transcripts that aren't as computationally expensive as Whisper.
+A Python tool that improves YouTube's auto-generated transcripts using DeepSeek LLM and compares these with high-quality Whisper transcriptions using semantic similarity with sentence-BERT model. The project's goal is to create high-quality transcripts that aren't as computationally expensive as Whisper.
 
 ## Results
 
