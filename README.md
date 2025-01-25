@@ -22,7 +22,7 @@ Analysis for video sNa_uiqSlJo:
 - Improvement: 56.35%
 - Total tokens used: 38,903
 
-Analysis for video x9Ekl9Izd38:
+Analysis for video x9Ekl9Izd38*:
 - Original similarity: 86.81%
 - Cleaned similarity: 71.85%
 - Improvement: -14.96%
@@ -41,6 +41,7 @@ Analysis for video CSE77wAdDLg:
 - Total tokens used: 41,579
 
 Notes:
+- *It seems some youtube transcripts are significantly better than others.
 - The sample size is small.
 - I need to see how big I can make the chunks before quality drops off to reduce API calls.
 
