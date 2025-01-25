@@ -1,12 +1,8 @@
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 import asyncio
-import nltk
 import os
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
-
-nltk.download('punkt')
-from nltk.tokenize import sent_tokenize
 
 # Load environment variables
 load_dotenv()
@@ -14,29 +10,23 @@ load_dotenv()
 # Configure OpenAI API
 client = AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
 MODEL = 'deepseek-chat'
+MODEL_2 = 'deepseek-reasoner'
 
 class PromptTemplates:
     @staticmethod
-    def get_cleaning_prompt(context: str, target: str) -> Dict[str, str]:
-        """Get the prompt configuration for transcript cleaning."""
-        system_prompt = """You are an expert at improving transcript quality. 
-        Analyze this transcript segment carefully and use the context to infer semantic meaning of the sentence."""
+    def get_summary_prompt(transcript: str) -> Dict[str, str]:
+        """Get prompt for generating transcript summary."""
+        system_prompt = """You are an expert at understanding and summarizing transcripts.
+        Your task is to provide a concise and information-dense summary that captures the main topics and conceptual flow of the transcript."""
         
         prompt = f"""
-        # Your task is to:
-        1. Identify any grammatical errors or unclear phrasing
-        2. Use context clues to infer correct words if there are obvious transcription errors
-        3. Maintain the original meaning and speaker's intent
-        4. Only make changes if you are confident they improve accuracy
-        5. Replace words that do not match the context of the transcript
-        6. Return ONLY the corrected sentence, with no explanation
-
-        # Use the context below to infer the purpose of the sentence:
-        {context}
-
-        # Target sentence to clean: {target}
-
-        If the sentence appears correct, return it unchanged.
+        Please provide a concise summary of this transcript that captures:
+        1. The main topics or themes
+        2. The logical flow of ideas
+        3. Any key context that would help understand individual segments
+        
+        Transcript:
+        {transcript}
         """
         
         return {
@@ -45,17 +35,31 @@ class PromptTemplates:
         }
     
     @staticmethod
-    def get_segmentation_prompt(self, text_segment: str) -> Dict[str, str]:
-        """Prompt for identifying natural sentence boundaries."""
-        system_prompt = """You are an expert at understanding natural speech patterns and sentence structure.
-        Your task is to identify where complete thoughts or sentences end in a transcript."""
+    def get_cleaning_prompt(chunk: str, summary: str, prev_chunks: Optional[List[str]] = None) -> Dict[str, str]:
+        """Get prompt for cleaning a chunk with summary and previous context."""
+        system_prompt = """You are an expert at improving transcript quality.
+        Your task is to clean and improve transcript segments while maintaining consistency with the overall context."""
         
+        context = ""
+        if prev_chunks:
+            context = "\nPrevious context:\n" + "\n".join(prev_chunks)
+            
         prompt = f"""
-        Given this segment of text, identify the next complete thought or sentence.
-        Return ONLY the complete thought/sentence, nothing else.
+        **Overall transcript summary for context:**
+        {summary}
         
-        Text segment:
-        {text_segment}
+        ** Previous transcript segments for context: **
+        {context}
+        
+        ** Task description: **
+        1. Clean up the following chunk of text to be grammatically correct and semantically consistent with the previous context.
+        2. Ensure it flows naturally from the previous context (if any), if no context, then just clean the chunk.
+        3. Maintain consistency with the overall summary while maintaining the original meaning and speaker's intent.
+        4. Replace words that do not match the context of the transcript, but only make changes if you are confident they improve accuracy.
+        5. Return ONLY the cleaned text, no explanations.
+        
+        ** Text to clean: **
+        {chunk}
         """
         
         return {
@@ -64,43 +68,67 @@ class PromptTemplates:
         }
 
 class TranscriptCleaner:
-    def __init__(self, window_size: int = 3, overlap: int = 1):
-        """Initialize the transcript cleaner with configurable window size and overlap."""
-        self.window_size = window_size
-        self.overlap = overlap
-
-    def _create_chunks(self, transcript: str) -> List[Dict]:
-        """Create overlapping chunks from the transcript."""
-        sentences = sent_tokenize(transcript)
-        print(f"Number of sentences: {len(sentences)}")
-        print(f"First sentence: {sentences[0]}")
+    def __init__(self, chunk_size: int = 1000):
+        """
+        Initialize the transcript cleaner.
+        
+        Args:
+            chunk_size: Approximate number of characters per chunk
+        """
+        self.chunk_size = chunk_size
+        
+    def _create_chunks(self, transcript: str) -> List[str]:
+        """Split transcript into chunks of approximately equal size."""
+        words = transcript.split()
         chunks = []
+        current_chunk = []
+        current_length = 0
         
-        # Handle case where transcript is too short for window size
-        if len(sentences) <= self.window_size:
-            chunks.append({
-                'target': sentences[0] if sentences else "",
-                'context': ' '.join(sentences),
-                'position': 0
-            })
-            return chunks
+        for word in words:
+            word_length = len(word) + 1  # +1 for space
+            if current_length + word_length > self.chunk_size and current_chunk:
+                chunks.append(' '.join(current_chunk))
+                current_chunk = [word]
+                current_length = word_length
+            else:
+                current_chunk.append(word)
+                current_length += word_length
+                
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
             
-        for i in range(0, len(sentences) - self.window_size + 1):
-            chunk = {
-                'target': sentences[i + self.overlap],  # The sentence we want to clean
-                'context': ' '.join(sentences[i:i + self.window_size]),  # Full context window
-                'position': i + self.overlap  # Keep track of position for reassembly
-            }
-            chunks.append(chunk)
-        
         return chunks
 
-    async def _clean_chunk(self, chunk: Dict) -> Dict:
-        """Clean a single chunk of the transcript."""
+    async def _get_summary(self, transcript: str) -> str:
+        """Generate a summary of the entire transcript."""
+        try:
+            prompt_config = PromptTemplates.get_summary_prompt(transcript)
+            
+            response = await client.chat.completions.create(
+                model=MODEL_2,
+                messages=[
+                    {"role": "system", "content": prompt_config["system_prompt"]},
+                    {"role": "user", "content": prompt_config["prompt"]}
+                ],
+                temperature=0.3
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            total_tokens = response.usage.total_tokens
+            print(f"\n========== Transcript Summary ==========\n{summary}\n")
+            return summary, total_tokens
+            
+        except Exception as e:
+            print(f"Error generating summary: {str(e)}")
+            return ""
+
+    async def _clean_chunk(self, chunk: str, summary: str, prev_chunks: Optional[List[str]] = None) -> str:
+        """Clean a single chunk using summary and previous chunks as context."""
         try:
             prompt_config = PromptTemplates.get_cleaning_prompt(
-                context=chunk['context'],
-                target=chunk['target']
+                chunk=chunk,
+                summary=summary,
+                prev_chunks=prev_chunks
             )
             
             response = await client.chat.completions.create(
@@ -109,30 +137,25 @@ class TranscriptCleaner:
                     {"role": "system", "content": prompt_config["system_prompt"]},
                     {"role": "user", "content": prompt_config["prompt"]}
                 ],
-                temperature=0.7,
-                max_tokens=5000
+                temperature=0.7
             )
             
             cleaned_text = response.choices[0].message.content.strip()
-            print(f"========== Original text ========== \n{chunk['target']}\n")
-            print(f"========== Cleaned text ========== \n{cleaned_text}\n")
-            return {
-                'position': chunk['position'],
-                'cleaned_text': cleaned_text
-            }
+            total_tokens_cleaning = response.usage.total_tokens
+            print(f"\n========== Original Chunk ==========\n{chunk}")
+            print(f"\n========== Cleaned Chunk ==========\n{cleaned_text}\n")
+            return cleaned_text, total_tokens_cleaning
+            
         except Exception as e:
             print(f"Error cleaning chunk: {str(e)}")
-            return {
-                'position': chunk['position'],
-                'cleaned_text': chunk['target']  # Return original text if cleaning fails
-            }
+            return chunk
 
     async def clean_transcript(self, transcript: str) -> str:
         """
-        Clean a transcript by processing it in chunks with context.
+        Clean transcript using a hierarchical approach with summary and sequential context.
         
         Args:
-            transcript (str): The transcript to clean
+            transcript: The transcript to clean
             
         Returns:
             str: The cleaned transcript
@@ -141,22 +164,31 @@ class TranscriptCleaner:
             return ""
             
         try:
-            # Create chunks with context
+            # Get overall summary first
+            summary, total_tokens_summary = await self._get_summary(transcript)
+            total_tokens = total_tokens_summary
+            if not summary:
+                print("Warning: Failed to generate summary, proceeding with limited context")
+                
+            # Split into chunks
             chunks = self._create_chunks(transcript)
             if not chunks:
                 return transcript
-            
-            # Process chunks in parallel
-            tasks = [self._clean_chunk(chunk) for chunk in chunks]
-            cleaned_chunks = await asyncio.gather(*tasks)
-            
-            # Sort by position and reassemble
-            cleaned_chunks.sort(key=lambda x: x['position'])
-            cleaned_transcript = ' '.join(chunk['cleaned_text'] for chunk in cleaned_chunks)
-            
-            return cleaned_transcript
+                
+            # Clean chunks sequentially, maintaining context
+            cleaned_chunks = []
+            for i, chunk in enumerate(chunks):
+                # Get previous chunks for context (up to 2)
+                prev_chunks = cleaned_chunks[-2:] if cleaned_chunks else None
+                
+                # Clean current chunk
+                cleaned_chunk, total_tokens_cleaning = await self._clean_chunk(chunk, summary, prev_chunks)
+                cleaned_chunks.append(cleaned_chunk)
+                total_tokens += total_tokens_cleaning
+
+            # Reassemble transcript
+            return ' '.join(cleaned_chunks), total_tokens
             
         except Exception as e:
             print(f"Error in transcript cleaning: {str(e)}")
-            return transcript  # Return original transcript if cleaning fails
-    
+            return transcript

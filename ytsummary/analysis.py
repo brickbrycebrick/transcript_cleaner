@@ -1,24 +1,30 @@
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import nltk
 from nltk.tokenize import sent_tokenize
 import numpy as np
-from yt_transcriber import YouTubeTranscriber
-from yt_summary import YouTubeProcessor
-import asyncio
+import os
 import json
+import glob
+import matplotlib.pyplot as plt
+from collections import defaultdict
 
 nltk.download('punkt')
 
 class TranscriptAnalyzer:
-    def __init__(self):
+    def __init__(self, 
+                 summary_dir: str = "./data/summary_transcripts",
+                 whisper_dir: str = "./data/transcriptions"):
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.summarizer = YouTubeProcessor()
-        self.transcriber = YouTubeTranscriber()
+        self.summary_dir = os.path.abspath(summary_dir)
+        self.whisper_dir = os.path.abspath(whisper_dir)
         
-    def compare_transcripts(self, text1: str, text2: str) -> float:
-        """Compare two texts using sentence embeddings and cosine similarity."""
+    def compare_transcripts(self, text1: str, text2: str) -> Tuple[float, List[float]]:
+        """
+        Compare two texts using sentence embeddings and cosine similarity.
+        Returns both the average similarity and list of individual sentence similarities.
+        """
         # Split texts into sentences
         sentences1 = sent_tokenize(text1)
         sentences2 = sent_tokenize(text2)
@@ -42,124 +48,155 @@ class TranscriptAnalyzer:
             # Take the maximum similarity (best matching sentence)
             similarities.append(max(sentence_similarities))
         
-        # Return average similarity
-        return np.mean(similarities)
+        # Return both average and individual similarities
+        return np.mean(similarities), similarities
 
-    async def analyze_video_transcripts(self, video_urls: List[str]) -> List[Dict]:
+    def plot_similarity_frequencies(self, original_similarities: List[float], cleaned_similarities: List[float], video_id: str):
+        """Create a line plot comparing similarity frequencies with improved binning."""
+        plt.figure(figsize=(12, 7))
+        
+        # Create more granular bins (100 bins between 0 and 1)
+        bins = np.linspace(0, 1, 50)
+        
+        # Plot histograms
+        plt.hist(original_similarities, bins=bins, alpha=0.5, label='Original Transcript', 
+                density=True, color='blue')
+        plt.hist(cleaned_similarities, bins=bins, alpha=0.5, label='Cleaned Transcript',
+                density=True, color='orange')
+        
+        # Add kernel density estimation for smoother curves
+        from scipy.stats import gaussian_kde
+        
+        def plot_kde(data, color):
+            kde = gaussian_kde(data)
+            x_range = np.linspace(0, 1, 200)
+            plt.plot(x_range, kde(x_range), color=color, linewidth=2)
+        
+        plot_kde(original_similarities, 'blue')
+        plot_kde(cleaned_similarities, 'orange')
+        
+        plt.title(f'Sentence Similarity Distribution - Video {video_id}')
+        plt.xlabel('Similarity Score')
+        plt.ylabel('Density')
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.legend()
+        
+        # Add summary statistics to plot
+        stats_text = (
+            f'Original Mean: {np.mean(original_similarities):.3f}\n'
+            f'Cleaned Mean: {np.mean(cleaned_similarities):.3f}\n'
+            f'Original Std: {np.std(original_similarities):.3f}\n'
+            f'Cleaned Std: {np.std(cleaned_similarities):.3f}'
+        )
+        plt.text(0.02, 0.98, stats_text, 
+                transform=plt.gca().transAxes,
+                verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
+        # Save plot
+        os.makedirs('plots', exist_ok=True)
+        plt.savefig(f'plots/similarity_distribution_{video_id}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
+    def analyze_transcripts(self) -> List[Dict]:
         """
-        Analyze transcripts from multiple sources for a list of videos.
-        Returns similarity scores comparing whisper transcripts to both original and cleaned YouTube transcripts.
+        Analyze all transcripts in the summary_transcripts directory by comparing them
+        with their corresponding whisper transcriptions.
         """
         results = []
         
-        try:
-            # Get whisper transcriptions
-            print("\nGetting Whisper transcriptions...")
-            whisper_results = await self.transcriber.transcribe_videos(video_urls)
+        # Get all summary transcript files
+        summary_files = glob.glob(os.path.join(self.summary_dir, "*.json"))
+        
+        for summary_file in summary_files:
+            video_id = os.path.splitext(os.path.basename(summary_file))[0]
+            whisper_file = os.path.join(self.whisper_dir, f"{video_id}.json")
             
-            # Get YouTube transcripts (original and cleaned)
-            print("\nGetting YouTube transcripts...")
-            youtube_results = await self.summarizer.process_multiple_videos(video_urls)
+            result = {
+                "video_id": video_id,
+                "original_similarity": None,
+                "cleaned_similarity": None,
+                "improvement": None,
+                "error": None,
+                "total_tokens": None
+            }
             
-            # Compare transcripts
-            for url in video_urls:
-                result = {
-                    "url": url,
-                    "original_similarity": None,
-                    "cleaned_similarity": None,
-                    "improvement": None,
-                    "error": None
-                }
+            try:
+                # Load summary transcripts
+                with open(summary_file, 'r', encoding='utf-8') as f:
+                    summary_data = json.load(f)
+                    
+                # Load whisper transcription
+                with open(whisper_file, 'r', encoding='utf-8') as f:
+                    whisper_data = json.load(f)
                 
-                try:
-                    video_id = self.transcriber._extract_video_id(url)
-                    if not video_id:
-                        result["error"] = "Could not extract video ID"
-                        results.append(result)
-                        continue
-
-                    # Find matching transcripts
-                    whisper_transcript = None
-                    youtube_result = None
-                    
-                    # Find whisper transcript
-                    if video_id in whisper_results:
-                        whisper_transcript = whisper_results[video_id].transcription
-                    else:
-                        # Try to load from existing transcription file
-                        try:
-                            transcript_path = self.transcriber._get_transcription_path(video_id)
-                            with open(transcript_path, 'r', encoding='utf-8') as f:
-                                data = json.load(f)
-                                whisper_transcript = data.get('transcription')
-                        except Exception as e:
-                            print(f"Could not load existing transcription for {video_id}: {str(e)}")
-                    
-                    # Find YouTube transcript
-                    for res in youtube_results:
-                        if res['video_id'] == video_id:
-                            youtube_result = res
-                            break
-                    
-                    if not whisper_transcript:
-                        result["error"] = f"No Whisper transcription found for video {video_id}"
-                    elif not youtube_result:
-                        result["error"] = f"No YouTube transcription found for video {video_id}"
-                    elif not youtube_result['success']:
-                        result["error"] = f"YouTube transcription failed: {youtube_result.get('error', 'Unknown error')}"
-                    else:
-                        # Calculate similarities
-                        original_similarity = self.compare_transcripts(
-                            whisper_transcript,
-                            youtube_result['transcript']
-                        )
-                        
-                        cleaned_similarity = self.compare_transcripts(
-                            whisper_transcript,
-                            youtube_result['cleaned_transcript']
-                        )
-                        
-                        result.update({
-                            "original_similarity": original_similarity,
-                            "cleaned_similarity": cleaned_similarity,
-                            "improvement": cleaned_similarity - original_similarity
-                        })
-                        
-                except Exception as e:
-                    result["error"] = f"Error processing video: {str(e)}"
+                whisper_transcript = whisper_data.get('transcription', '').replace('\n', ' ').strip()
+                youtube_transcript = summary_data.get('youtube_transcript', '')
+                cleaned_transcript = summary_data.get('cleaned_transcript', '')
                 
-                results.append(result)
+                if whisper_transcript and youtube_transcript and cleaned_transcript:
+                    # Calculate similarities
+                    original_similarity, original_similarities = self.compare_transcripts(
+                        whisper_transcript,
+                        youtube_transcript
+                    )
+                    
+                    cleaned_similarity, cleaned_similarities = self.compare_transcripts(
+                        whisper_transcript,
+                        cleaned_transcript
+                    )
+                    
+                    # Create similarity distribution plot
+                    self.plot_similarity_frequencies(original_similarities, cleaned_similarities, video_id)
+                    
+                    result.update({
+                        "original_similarity": original_similarity,
+                        "cleaned_similarity": cleaned_similarity,
+                        "improvement": cleaned_similarity - original_similarity,
+                        "total_tokens": summary_data.get('total_tokens', 0)
+                    })
+                else:
+                    result["error"] = "Missing transcript data"
+                    
+            except FileNotFoundError:
+                result["error"] = f"Missing corresponding file in {'whisper' if not os.path.exists(whisper_file) else 'summary'} directory"
+            except Exception as e:
+                result["error"] = str(e)
             
-        except Exception as e:
-            print(f"Error in analysis: {str(e)}")
-            for url in video_urls:
-                results.append({
-                    "url": url,
-                    "error": f"Analysis failed: {str(e)}"
-                })
+            results.append(result)
+            
+            # Print results for this video
+            print(f"\nAnalysis for video {video_id}:")
+            if result["error"]:
+                print(f"Error: {result['error']}")
+            else:
+                print(f"Original similarity: {result['original_similarity']:.2%}")
+                print(f"Cleaned similarity: {result['cleaned_similarity']:.2%}")
+                print(f"Improvement: {result['improvement']:.2%}")
+                print(f"Total tokens used: {result['total_tokens']}")
+                print(f"Plot saved as: plots/similarity_distribution_{video_id}.png")
         
         return results
 
-async def main():
-    # Example video URLs
-    video_urls = [
-        "https://www.youtube.com/watch?v=sNa_uiqSlJo",
-        "https://www.youtube.com/watch?v=x9Ekl9Izd38",
-        "https://www.youtube.com/watch?v=sGUjmyfof4Q"
-    ]
+def main():
+    # The video URLs are just for reference - the analysis will process all files in the directories
+    print("Analyzing transcripts in data/summary_transcripts/ and data/transcriptions/...")
     
     analyzer = TranscriptAnalyzer()
-    results = await analyzer.analyze_video_transcripts(video_urls)
+    results = analyzer.analyze_transcripts()  # No arguments needed
     
-    # Print results
-    for result in results:
-        print(f"\nAnalysis for {result['url']}:")
-        if result['error']:
-            print(f"Error: {result['error']}")
+    # Print summary statistics
+    if results:
+        successful_results = [r for r in results if r["improvement"] is not None]
+        if successful_results:
+            avg_improvement = np.mean([r["improvement"] for r in successful_results])
+            total_tokens = sum(r["total_tokens"] for r in successful_results if r["total_tokens"])
+            print("\n=== Overall Statistics ===")
+            print(f"Average improvement: {avg_improvement:.2%}")
+            print(f"Total tokens used: {total_tokens}")
+            print(f"Successfully analyzed: {len(successful_results)} out of {len(results)} videos")
         else:
-            print(f"Original transcript similarity: {result['original_similarity']:.2%}")
-            print(f"Cleaned transcript similarity: {result['cleaned_similarity']:.2%}")
-            print(f"Improvement: {result['improvement']:.2%}")
+            print("\nNo successful comparisons to analyze")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    main() 
