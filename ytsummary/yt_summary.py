@@ -44,11 +44,12 @@ class YouTubeProcessor:
             output_path = self._get_summary_path(result["video_id"])
             try:
                 youtube_transcript = result["transcript"].replace("\n", " ").strip()
+                cleaned_transcript = result["cleaned_transcript"].replace("...", " ").strip()
                 with open(output_path, 'w', encoding='utf-8') as f:
                     json.dump({
                         "video_id": result["video_id"],
                         "youtube_transcript": youtube_transcript,
-                        "cleaned_transcript": result["cleaned_transcript"],
+                        "cleaned_transcript": cleaned_transcript,
                         "success": result["success"],
                         "total_tokens": result["total_tokens"]
                     }, f, indent=2, ensure_ascii=False)

@@ -37,9 +37,10 @@ class Pipeline:
             if not result.get("error"):
                 video_id = result["video_id"]
                 try:
-                    with open(f"./data/transcriptions/{video_id}.json", 'r') as f:
+                    # Use utf-8 encoding for reading JSON files
+                    with open(f"./data/transcriptions/{video_id}.json", 'r', encoding='utf-8') as f:
                         whisper_data = json.load(f)
-                    with open(f"./data/summary_transcripts/{video_id}.json", 'r') as f:
+                    with open(f"./data/summary_transcripts/{video_id}.json", 'r', encoding='utf-8') as f:
                         summary_data = json.load(f)
                         
                     # Get similarities
@@ -57,7 +58,13 @@ class Pipeline:
                     
                 except Exception as e:
                     print(f"Error processing {video_id} for aggregate plot: {str(e)}")
+                    print(f"Skipping video {video_id} in aggregate analysis")
+                    continue
         
+        if not orig_similarities or not cleaned_similarities:
+            print("No valid similarities found for aggregate plot")
+            return
+            
         # Create plot
         plt.figure(figsize=(12, 8))
         
@@ -152,7 +159,9 @@ async def main():
     video_urls = [
         "https://www.youtube.com/watch?v=sNa_uiqSlJo",
         "https://www.youtube.com/watch?v=x9Ekl9Izd38",
-        "https://www.youtube.com/watch?v=sGUjmyfof4Q"
+        "https://www.youtube.com/watch?v=sGUjmyfof4Q",
+        "https://www.youtube.com/watch?v=CSE77wAdDLg",
+        "https://www.youtube.com/watch?v=w9WE1aOPjHc"
     ]
     
     pipeline = Pipeline()

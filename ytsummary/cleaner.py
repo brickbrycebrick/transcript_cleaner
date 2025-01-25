@@ -25,7 +25,7 @@ class PromptTemplates:
         2. The logical flow of ideas
         3. Any key context that would help understand individual segments
         
-        Transcript:
+        ** Transcript: **
         {transcript}
         """
         
@@ -68,17 +68,22 @@ class PromptTemplates:
         }
 
 class TranscriptCleaner:
-    def __init__(self, chunk_size: int = 1000):
+    def __init__(self, chunk_size: int = 1000, batch_size: int = 3):
         """
         Initialize the transcript cleaner.
         
         Args:
             chunk_size: Approximate number of characters per chunk
+            batch_size: Number of chunks to process in parallel
         """
         self.chunk_size = chunk_size
-        
+        self.batch_size = batch_size
+
     def _create_chunks(self, transcript: str) -> List[str]:
         """Split transcript into chunks of approximately equal size."""
+        # Normalize line breaks and whitespace first
+        transcript = ' '.join(transcript.split())
+        
         words = transcript.split()
         chunks = []
         current_chunk = []
@@ -99,7 +104,7 @@ class TranscriptCleaner:
             
         return chunks
 
-    async def _get_summary(self, transcript: str) -> str:
+    async def _get_summary(self, transcript: str) -> Tuple[str, int]:
         """Generate a summary of the entire transcript."""
         try:
             prompt_config = PromptTemplates.get_summary_prompt(transcript)
@@ -120,11 +125,14 @@ class TranscriptCleaner:
             
         except Exception as e:
             print(f"Error generating summary: {str(e)}")
-            return ""
+            return "", 0
 
-    async def _clean_chunk(self, chunk: str, summary: str, prev_chunks: Optional[List[str]] = None) -> str:
+    async def _clean_chunk(self, chunk: str, summary: str, prev_chunks: Optional[List[str]] = None) -> Tuple[str, int]:
         """Clean a single chunk using summary and previous chunks as context."""
         try:
+            # Normalize chunk text
+            chunk = ' '.join(chunk.split())
+            
             prompt_config = PromptTemplates.get_cleaning_prompt(
                 chunk=chunk,
                 summary=summary,
@@ -141,54 +149,97 @@ class TranscriptCleaner:
             )
             
             cleaned_text = response.choices[0].message.content.strip()
-            total_tokens_cleaning = response.usage.total_tokens
+            cleaned_text = ' '.join(cleaned_text.split())  # Normalize whitespace
+            total_tokens = response.usage.total_tokens
+            
             print(f"\n========== Original Chunk ==========\n{chunk}")
             print(f"\n========== Cleaned Chunk ==========\n{cleaned_text}\n")
-            return cleaned_text, total_tokens_cleaning
+            return cleaned_text, total_tokens
             
         except Exception as e:
             print(f"Error cleaning chunk: {str(e)}")
-            return chunk
+            return chunk, 0
 
-    async def clean_transcript(self, transcript: str) -> str:
-        """
-        Clean transcript using a hierarchical approach with summary and sequential context.
-        
-        Args:
-            transcript: The transcript to clean
+    async def _process_chunk_batch(self, chunks: List[str], summary: str, 
+                                start_idx: int, prev_cleaned: List[str]) -> List[Tuple[str, int]]:
+        """Process a batch of chunks in parallel while maintaining context."""
+        async def process_chunk(chunk: str, position: int, completed_results: List[Tuple[str, int]]):
+            # Get context from previous batch and completed chunks
+            context_chunks = []
             
-        Returns:
-            str: The cleaned transcript
-        """
+            # Add context from previous batch
+            if prev_cleaned:
+                context_chunks.extend(prev_cleaned[-2:])
+                
+            # Add context from completed chunks in current batch
+            if position > 0:
+                context_chunks.extend([result[0] for result in completed_results[:position][-2:]])
+                
+            context_chunks = context_chunks[-2:] if context_chunks else None
+            return await self._clean_chunk(chunk, summary, context_chunks)
+        
+        # Process chunks with semaphore to control concurrency
+        semaphore = asyncio.Semaphore(self.batch_size)
+        async def bounded_process(chunk: str, position: int, completed_results: List[Tuple[str, int]]):
+            async with semaphore:
+                return await process_chunk(chunk, position, completed_results)
+        
+        # Track results while maintaining order
+        results = []
+        tasks = []
+        
+        for i, chunk in enumerate(chunks):
+            task = bounded_process(chunk, i, results)
+            tasks.append(task)
+        
+        # Wait for all chunks in batch to complete
+        completed = await asyncio.gather(*tasks)
+        return completed
+
+    async def clean_transcript(self, transcript: str) -> Tuple[str, int]:
         if not transcript:
-            return ""
+            return "", 0
             
         try:
-            # Get overall summary first
-            summary, total_tokens_summary = await self._get_summary(transcript)
-            total_tokens = total_tokens_summary
-            if not summary:
-                print("Warning: Failed to generate summary, proceeding with limited context")
-                
-            # Split into chunks
+            transcript = ' '.join(transcript.split())
+            summary, total_tokens = await self._get_summary(transcript)
             chunks = self._create_chunks(transcript)
-            if not chunks:
-                return transcript
-                
-            # Clean chunks sequentially, maintaining context
-            cleaned_chunks = []
-            for i, chunk in enumerate(chunks):
-                # Get previous chunks for context (up to 2)
-                prev_chunks = cleaned_chunks[-2:] if cleaned_chunks else None
-                
-                # Clean current chunk
-                cleaned_chunk, total_tokens_cleaning = await self._clean_chunk(chunk, summary, prev_chunks)
-                cleaned_chunks.append(cleaned_chunk)
-                total_tokens += total_tokens_cleaning
-
-            # Reassemble transcript
-            return ' '.join(cleaned_chunks), total_tokens
             
+            if not chunks:
+                return transcript, 0
+                
+            cleaned_chunks = []
+            batch_number = 1
+            total_batches = (len(chunks) + self.batch_size - 1) // self.batch_size
+            
+            for i in range(0, len(chunks), self.batch_size):
+                print(f"\nProcessing batch {batch_number}/{total_batches}")
+                batch = chunks[i:i + self.batch_size]
+                prev_cleaned = cleaned_chunks[-2:] if cleaned_chunks else None
+                
+                try:
+                    results = await self._process_chunk_batch(batch, summary, i, prev_cleaned)
+                    
+                    # Extract results while checking for failures
+                    for j, (cleaned_text, batch_tokens) in enumerate(results):
+                        if cleaned_text and batch_tokens > 0:
+                            cleaned_chunks.append(cleaned_text.strip())
+                            total_tokens += batch_tokens
+                        else:
+                            print(f"Warning: Chunk {i + j} failed to process, using original")
+                            cleaned_chunks.append(batch[j].strip())
+                            
+                except Exception as e:
+                    print(f"Error processing batch {batch_number}: {str(e)}")
+                    # On batch failure, add original chunks to maintain sequence
+                    cleaned_chunks.extend([chunk.strip() for chunk in batch])
+                    
+                batch_number += 1
+                
+            cleaned_transcript = ' '.join(cleaned_chunks).strip()
+            return cleaned_transcript, total_tokens
+                
         except Exception as e:
             print(f"Error in transcript cleaning: {str(e)}")
-            return transcript
+            return transcript, 0
+                

@@ -87,9 +87,18 @@ class YouTubeTranscriber:
     def _load_model(self):
         """Load the Whisper model if not already loaded."""
         if self.model is None:
+            # Set CUDA device and optimization settings
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if torch.cuda.is_available():
+                torch.backends.cudnn.benchmark = True
+                torch.set_float32_matmul_precision('high')
+                print(f"Using GPU: {torch.cuda.get_device_name()}")
+                print(f"CUDA Version: {torch.version.cuda}")
+            else:
+                print("CUDA not available, using CPU")
+                
             self.model = whisper.load_model("medium", device=device)
-
+            
     def _save_transcription(self, result: TranscriptionResult):
         """Save transcription result to JSON file."""
         output_path = self._get_transcription_path(result.video_id)
@@ -103,6 +112,10 @@ class YouTubeTranscriber:
         """
         results = {}
 
+        # Load model at start to avoid reloading
+        if self.model is None:
+            self._load_model()
+
         for url in video_urls:
             video_id = self._extract_video_id(url)
             if not video_id:
@@ -112,7 +125,6 @@ class YouTubeTranscriber:
             # Check if transcription exists before any processing
             if self._transcription_exists(video_id):
                 print(f"Valid transcription already exists for video {video_id}, skipping...")
-                # Load existing transcription
                 try:
                     with open(self._get_transcription_path(video_id), 'r', encoding='utf-8') as f:
                         data = json.load(f)
@@ -134,13 +146,15 @@ class YouTubeTranscriber:
                 continue
 
             try:
-                # Load model only when needed
-                if self.model is None:
-                    self._load_model()
-                
-                # Transcribe
+                # Transcribe with optimized settings
                 print(f"Transcribing {video_id}...")
-                result = self.model.transcribe(audio_path)
+                result = self.model.transcribe(
+                    audio_path,
+                    fp16=torch.cuda.is_available(),  # Use half-precision if GPU available
+                    language='en',  # Specify language for better performance
+                    beam_size=5,    # Increase beam size for better accuracy
+                    best_of=5       # Number of candidates to consider
+                )
                 
                 # Final check before saving
                 if self._transcription_exists(video_id):
@@ -161,6 +175,10 @@ class YouTubeTranscriber:
             except Exception as e:
                 print(f"Error transcribing video {video_id}: {str(e)}")
                 continue
+                
+            # Clear CUDA cache after each video
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         return results
 

@@ -37,10 +37,10 @@ virtual/
 *.swo
 .DS_Store
 
+
 # Project specific
-data/audios/
-data/transcriptions/
-data/transcripts/
+data/
+data
 
 # Jupyter Notebook
 .ipynb_checkpoints

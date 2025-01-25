@@ -7,27 +7,38 @@ A Python tool that improves YouTube's auto-generated transcripts using DeepSeek 
 ### Aggregate Similarity Distribution
 ![Aggregate Similarity Distribution](plots/aggregate_similarity_distribution.png)
 
-This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.303), while the orange line represents the cleaned transcripts (mean: 0.709). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 29.67% with a total of 80833 tokens used over n=3 videos.
+This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.241), while the orange line represents the cleaned transcripts (mean: 0.761). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 39.99% for n=5.video.
 
 ### Individual Analysis
 Analysis for video sGUjmyfof4Q:
-Original similarity: 17.64%
-Cleaned similarity: 65.26%
-Improvement: 47.61%
-Total tokens used: 27018
+- Original similarity: 17.64%
+- Cleaned similarity: 65.26%
+- Improvement: 47.61%
+- Total tokens used: 27018
 
-Analysis for video sNa_uiqSlJo:
-Original similarity: 25.42%
-Cleaned similarity: 81.78%
-Improvement: 56.35%
-Total tokens used: 38903
+- Analysis for video sNa_uiqSlJo:
+- Original similarity: 25.42%
+- Cleaned similarity: 81.78%
+- Improvement: 56.35%
+- Total tokens used: 38903
 
+- Analysis for video x9Ekl9Izd38:
+- Original similarity: 86.81%
+- Cleaned similarity: 71.85%
+- Improvement: -14.96%
+- Total tokens used: 14912
 
-Analysis for video x9Ekl9Izd38:
-Original similarity: 86.81%
-Cleaned similarity: 71.85%
-Improvement: -14.96%
-Total tokens used: 14912
+Analysis for video w9WE1aOPjHc:
+- Original similarity: 22.47%
+- Cleaned similarity: 81.25%
+- Improvement: 58.78%
+- Total tokens used: 136026
+
+Analysis for video CSE77wAdDLg:
+- Original similarity: 19.68%
+- Cleaned similarity: 71.83%
+- Improvement: 52.15%
+- Total tokens used: 41579
 
 Notes:
 - Whisper transcripts are used as a base line for comparison.
