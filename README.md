@@ -42,7 +42,8 @@ Analysis for video CSE77wAdDLg:
 
 Notes:
 - *It seems some youtube transcripts are significantly better than others.
-- The sample size is small.
+- The sample size is probably too small.
+- Similarity distributions for individual videos are in the plots/ folder.
 - I need to see how big I can make the chunks before quality drops off to reduce API calls.
 
 ## Features
