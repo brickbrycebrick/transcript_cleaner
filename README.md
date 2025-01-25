@@ -7,7 +7,7 @@ A Python tool that improves YouTube's auto-generated transcripts using DeepSeek 
 ### Aggregate Similarity Distribution
 ![Aggregate Similarity Distribution](plots/aggregate_similarity_distribution.png)
 
-This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.241), while the orange line represents the cleaned transcripts (mean: 0.761). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 39.99% for n=5 videos and 1,659 tokens per minute of video on average.
+This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.241), while the orange line represents the cleaned transcripts (mean: 0.761). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 39.99% for n=1811 sentences and 1,659 tokens per minute of video on average.
 
 ### Individual Analysis
 Analysis for video sGUjmyfof4Q:
