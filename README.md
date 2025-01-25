@@ -7,38 +7,38 @@ A Python tool that improves YouTube's auto-generated transcripts using DeepSeek 
 ### Aggregate Similarity Distribution
 ![Aggregate Similarity Distribution](plots/aggregate_similarity_distribution.png)
 
-This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.241), while the orange line represents the cleaned transcripts (mean: 0.761). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 39.99% for n=5 videos and an average of 142 tokens per sentence.
+This plot shows the distribution of sentence-level similarities between Whisper and YouTube transcripts. The blue line represents the original YouTube transcripts (mean: 0.241), while the orange line represents the cleaned transcripts (mean: 0.761). Higher similarity scores indicate better alignment with the Whisper transcription. The average improvement is 39.99% for n=5 videos and 1,659 tokens per minute of video on average.
 
 ### Individual Analysis
 Analysis for video sGUjmyfof4Q:
 - Original similarity: 17.64%
 - Cleaned similarity: 65.26%
 - Improvement: 47.61%
-- Total tokens used: 27018
+- Total tokens used: 27,018
 
 Analysis for video sNa_uiqSlJo:
 - Original similarity: 25.42%
 - Cleaned similarity: 81.78%
 - Improvement: 56.35%
-- Total tokens used: 38903
+- Total tokens used: 38,903
 
 Analysis for video x9Ekl9Izd38:
 - Original similarity: 86.81%
 - Cleaned similarity: 71.85%
 - Improvement: -14.96%
-- Total tokens used: 14912
+- Total tokens used: 14,912
 
 Analysis for video w9WE1aOPjHc:
 - Original similarity: 22.47%
 - Cleaned similarity: 81.25%
 - Improvement: 58.78%
-- Total tokens used: 136026
+- Total tokens used: 136,026
 
 Analysis for video CSE77wAdDLg:
 - Original similarity: 19.68%
 - Cleaned similarity: 71.83%
 - Improvement: 52.15%
-- Total tokens used: 41579
+- Total tokens used: 41,579
 
 Notes:
 - Whisper transcripts are used as a base line for comparison.
