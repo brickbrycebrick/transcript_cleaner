@@ -16,13 +16,13 @@ Analysis for video sGUjmyfof4Q:
 - Improvement: 47.61%
 - Total tokens used: 27018
 
-- Analysis for video sNa_uiqSlJo:
+Analysis for video sNa_uiqSlJo:
 - Original similarity: 25.42%
 - Cleaned similarity: 81.78%
 - Improvement: 56.35%
 - Total tokens used: 38903
 
-- Analysis for video x9Ekl9Izd38:
+Analysis for video x9Ekl9Izd38:
 - Original similarity: 86.81%
 - Cleaned similarity: 71.85%
 - Improvement: -14.96%
