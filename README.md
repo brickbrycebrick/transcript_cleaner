@@ -42,8 +42,8 @@ Analysis for video CSE77wAdDLg:
 
 Notes:
 - Whisper transcripts are used as a base line for comparison.
-- More videos need to be tested so that the process can be improved.
-- I plan to experiment with models besides SBERT for similarity metrics.
+- The sample size is small.
+- I need to see how big I can make the chunks before quality drops off to reduce API calls.
 
 ## Features
 
